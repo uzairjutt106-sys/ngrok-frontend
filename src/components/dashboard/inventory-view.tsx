@@ -52,10 +52,10 @@ export default function InventoryView({ transactions }: InventoryViewProps) {
               {tx.quantity_kg.toFixed(2)}
             </TableCell>
             <TableCell className="text-right text-green-600">
-              ${tx.purchase_rate.toFixed(2)}
+              PKR {tx.purchase_rate.toFixed(2)}
             </TableCell>
             <TableCell className="text-right text-blue-600">
-              ${tx.sale_rate.toFixed(2)}
+              PKR {tx.sale_rate.toFixed(2)}
             </TableCell>
           </TableRow>
         ))}

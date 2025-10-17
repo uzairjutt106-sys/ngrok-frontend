@@ -100,7 +100,7 @@ export default function TransactionForm({ items }: TransactionFormProps) {
       </div>
 
       <div>
-        <Label htmlFor="purchase_rate">Purchase Rate ($/kg)</Label>
+        <Label htmlFor="purchase_rate">Purchase Rate (PKR/kg)</Label>
         <Input
           id="purchase_rate"
           name="purchase_rate"
@@ -116,7 +116,7 @@ export default function TransactionForm({ items }: TransactionFormProps) {
         )}
       </div>
       <div>
-        <Label htmlFor="sale_rate">Sale Rate ($/kg)</Label>
+        <Label htmlFor="sale_rate">Sale Rate (PKR/kg)</Label>
         <Input
           id="sale_rate"
           name="sale_rate"

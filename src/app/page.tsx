@@ -46,7 +46,7 @@ export default async function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${totalProfit.toLocaleString('en-US')}
+                PKR {totalProfit.toLocaleString('en-US')}
               </div>
               <p className="text-xs text-muted-foreground">
                 Based on sales and purchases

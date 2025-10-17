@@ -155,7 +155,7 @@ export default function ReportsView() {
                           : 'text-red-600'
                       )}
                     >
-                      {summary.total_profit < 0 && '-'}$
+                      {summary.total_profit < 0 && '-'}PKR
                       {Math.abs(summary.total_profit).toFixed(2)}
                     </TableCell>
                   </TableRow>
