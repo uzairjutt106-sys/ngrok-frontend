@@ -1,4 +1,4 @@
-import { getItems, getTransactions, getDailySummary } from '@/lib/api';
+import { getItems, getTransactions, getDailySummary, checkHealth } from '@/lib/api';
 import Header from '@/components/dashboard/header';
 import InventoryView from '@/components/dashboard/inventory-view';
 import TransactionForm from '@/components/dashboard/transaction-form';
@@ -11,8 +11,15 @@ import {
 } from '@/components/ui/card';
 import { DollarSign, Scale, Boxes } from 'lucide-react';
 import { DailySummary } from '@/lib/types';
+import ApiErrorView from '@/components/dashboard/api-error-view';
 
 export default async function DashboardPage() {
+  const health = await checkHealth().catch(() => ({ ok: false }));
+
+  if (!health.ok) {
+    return <ApiErrorView />;
+  }
+
   const [items, transactions, dailySummary] = await Promise.all([
     getItems(),
     getTransactions(),
