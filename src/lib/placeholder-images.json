@@ -1,3 +1,34 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "scrap-copper",
+      "description": "A pile of scrap copper pipes and wires",
+      "imageUrl": "https://picsum.photos/seed/copper/600/400",
+      "imageHint": "scrap copper"
+    },
+    {
+      "id": "scrap-aluminum",
+      "description": "A collection of crushed aluminum cans",
+      "imageUrl": "https://picsum.photos/seed/aluminum/600/400",
+      "imageHint": "scrap aluminum"
+    },
+    {
+      "id": "scrap-steel",
+      "description": "A heap of rusted steel parts",
+      "imageUrl": "https://picsum.photos/seed/steel/600/400",
+      "imageHint": "scrap steel"
+    },
+    {
+      "id": "scrap-brass",
+      "description": "Shiny brass fittings and fixtures",
+      "imageUrl": "https://picsum.photos/seed/brass/600/400",
+      "imageHint": "scrap brass"
+    },
+    {
+      "id": "scrap-lead",
+      "description": "Heavy lead plates and weights",
+      "imageUrl": "https://picsum.photos/seed/lead/600/400",
+      "imageHint": "scrap lead"
+    }
+  ]
 }
