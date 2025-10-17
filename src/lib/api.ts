@@ -69,3 +69,11 @@ export async function getDailySummary(
   const to = date_to.toISOString().split('T')[0];
   return apiFetch(`/summary/daily?date_from=${from}&date_to=${to}`);
 }
+
+export async function deleteTransaction(
+  tx_id: number
+): Promise<{ message: string }> {
+  return apiFetch(`/transactions/${tx_id}`, {
+    method: 'DELETE',
+  });
+}

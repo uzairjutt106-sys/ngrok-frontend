@@ -10,6 +10,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Boxes } from 'lucide-react';
 import { format } from 'date-fns';
+import DeleteTransactionDialog from './delete-transaction-dialog';
 
 type InventoryViewProps = {
   transactions: Transaction[];
@@ -37,6 +38,7 @@ export default function InventoryView({ transactions }: InventoryViewProps) {
           <TableHead className="text-right">Quantity (kg)</TableHead>
           <TableHead className="text-right">Purchase Rate</TableHead>
           <TableHead className="text-right">Sale Rate</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -56,6 +58,9 @@ export default function InventoryView({ transactions }: InventoryViewProps) {
             </TableCell>
             <TableCell className="text-right text-blue-600">
               PKR {tx.sale_rate.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-right">
+              <DeleteTransactionDialog transactionId={tx.id} />
             </TableCell>
           </TableRow>
         ))}

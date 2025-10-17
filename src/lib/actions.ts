@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { addTransaction, getDailySummary } from './api';
+import { addTransaction, getDailySummary, deleteTransaction } from './api';
 import { revalidatePath } from 'next/cache';
 import { DailySummaryResponse } from './types';
 
@@ -105,5 +105,29 @@ export async function generateReport(
     return { summaries };
   } catch (e) {
     return { error: 'Failed to generate report.' };
+  }
+}
+
+type DeleteTransactionState = {
+  message: string;
+  success: boolean;
+}
+
+export async function deleteTransactionAction(prevState: DeleteTransactionState, formData: FormData): Promise<DeleteTransactionState> {
+  const txId = formData.get('transaction_id');
+  if (!txId) {
+    return { message: 'Transaction ID is missing.', success: false };
+  }
+
+  try {
+    const result = await deleteTransaction(Number(txId));
+    if (result.message) {
+      revalidatePath('/');
+      return { message: 'Transaction deleted successfully!', success: true };
+    } else {
+      return { message: 'Failed to delete transaction.', success: false };
+    }
+  } catch (e: any) {
+    return { message: e.message || 'An unexpected error occurred.', success: false };
   }
 }
