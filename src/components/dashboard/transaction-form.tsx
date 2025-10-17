@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useEffect, useRef, useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { submitTransaction } from '@/lib/actions';
 import type { Item } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -37,7 +37,7 @@ function SubmitButton() {
 }
 
 export default function TransactionForm({ items }: TransactionFormProps) {
-  const [state, formAction] = useFormState(submitTransaction, initialState);
+  const [state, formAction] = useActionState(submitTransaction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 

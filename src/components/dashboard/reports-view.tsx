@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useState, useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { generateReport } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -43,7 +43,7 @@ function GenerateButton() {
 }
 
 export default function ReportsView() {
-  const [state, formAction] = useFormState(generateReport, initialState);
+  const [state, formAction] = useActionState(generateReport, initialState);
   const [startDate, setStartDate] = useState<Date | undefined>(
     new Date(new Date().setDate(new Date().getDate() - 7))
   );
