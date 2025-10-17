@@ -3,20 +3,22 @@
 import { z } from 'zod';
 import { addTransaction, getDailySummary } from './api';
 import { revalidatePath } from 'next/cache';
-import type { DailySummary } from './types';
+import { DailySummaryResponse } from './types';
 
 const transactionSchema = z.object({
-  itemId: z.string().min(1, 'Please select an item.'),
-  weight: z.coerce.number().positive('Weight must be a positive number.'),
-  price: z.coerce.number().positive('Price must be a positive number.'),
+  item_name: z.string().min(1, 'Please select an item.'),
+  quantity_kg: z.coerce.number().positive('Quantity must be positive.'),
+  purchase_rate: z.coerce.number().positive('Purchase rate must be positive.'),
+  sale_rate: z.coerce.number().positive('Sale rate must be positive.'),
 });
 
 type TransactionFormState = {
   message: string;
   errors?: {
-    itemId?: string[];
-    weight?: string[];
-    price?: string[];
+    item_name?: string[];
+    quantity_kg?: string[];
+    purchase_rate?: string[];
+    sale_rate?: string[];
   };
   success: boolean;
 };
@@ -26,9 +28,10 @@ export async function submitTransaction(
   formData: FormData
 ): Promise<TransactionFormState> {
   const validatedFields = transactionSchema.safeParse({
-    itemId: formData.get('itemId'),
-    weight: formData.get('weight'),
-    price: formData.get('price'),
+    item_name: formData.get('item_name'),
+    quantity_kg: formData.get('quantity_kg'),
+    purchase_rate: formData.get('purchase_rate'),
+    sale_rate: formData.get('sale_rate'),
   });
 
   if (!validatedFields.success) {
@@ -41,28 +44,28 @@ export async function submitTransaction(
 
   try {
     const result = await addTransaction(validatedFields.data);
-    if (result.success) {
+    if (result.message) {
       revalidatePath('/');
-      return { message: 'Transaction added successfully!', success: true };
+      return { message: 'Transaction recorded successfully!', success: true };
     } else {
       return {
-        message: 'Failed to add transaction. Item not found.',
+        message: 'Failed to record transaction. Please try again.',
         success: false,
       };
     }
-  } catch (e) {
-    return { message: 'An unexpected error occurred.', success: false };
+  } catch (e: any) {
+    return { message: e.message || 'An unexpected error occurred.', success: false };
   }
 }
 
 const reportSchema = z.object({
-  startDate: z.coerce.date(),
-  endDate: z.coerce.date(),
+  startDate: z.string(),
+  endDate: z.string(),
 });
 
 type ReportState = {
   message?: string;
-  summaries?: DailySummary[];
+  summaries?: DailySummaryResponse;
   error?: string;
 };
 
@@ -86,16 +89,17 @@ export async function generateReport(
     return { error: 'Invalid date format.' };
   }
 
-  if (validatedFields.data.endDate < validatedFields.data.startDate) {
+  // Basic date validation
+  if (new Date(validatedFields.data.endDate) < new Date(validatedFields.data.startDate)) {
     return { error: 'End date cannot be before start date.' };
   }
 
   try {
     const summaries = await getDailySummary(
-      validatedFields.data.startDate,
-      validatedFields.data.endDate
+      new Date(validatedFields.data.startDate),
+      new Date(validatedFields.data.endDate)
     );
-    if (summaries.length === 0) {
+    if (summaries.rows.length === 0) {
       return { message: 'No data available for the selected period.' };
     }
     return { summaries };

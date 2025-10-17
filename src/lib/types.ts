@@ -1,27 +1,31 @@
-export type Item = {
-  id: string;
-  name: string;
-};
-
-export type InventoryItem = {
-  id: string;
-  item: Item;
-  weight: number; // in kgs
-  currentValue: number; // total value for this stock
-  lastUpdated: string;
-};
-
 export type Transaction = {
-  itemId: string;
-  weight: number;
-  price: number;
-  type: 'purchase' | 'sale';
+  id: number;
+  item_name: string;
+  purchase_rate: number;
+  sale_rate: number;
+  quantity_kg: number;
+  transaction_date: string;
+};
+
+export type TransactionPayload = Omit<Transaction, 'id' | 'transaction_date'> & {
+  transaction_date?: string;
+};
+
+export type TransactionResponse = {
+  total_records: number;
+  transactions: Transaction[];
 };
 
 export type DailySummary = {
-  date: string;
-  purchases: number;
-  sales: number;
-  expenses: number;
-  profit: number;
+  transaction_date: string;
+  total_qty_kg: number;
+  total_profit: number;
+};
+
+export type DailySummaryResponse = {
+  rows: DailySummary[];
+};
+
+export type ItemsResponse = {
+  items: string[];
 };

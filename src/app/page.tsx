@@ -1,4 +1,4 @@
-import { getItems, getInventory } from '@/lib/api';
+import { getItems, getTransactions, getDailySummary } from '@/lib/api';
 import Header from '@/components/dashboard/header';
 import InventoryView from '@/components/dashboard/inventory-view';
 import TransactionForm from '@/components/dashboard/transaction-form';
@@ -10,14 +10,27 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { DollarSign, Scale, Boxes } from 'lucide-react';
+import { DailySummary } from '@/lib/types';
 
 export default async function DashboardPage() {
-  const inventory = await getInventory();
-  const items = await getItems();
+  const [items, transactions, dailySummary] = await Promise.all([
+    getItems(),
+    getTransactions(),
+    getDailySummary(
+      new Date(new Date().setDate(new Date().getDate() - 30)),
+      new Date()
+    ),
+  ]);
 
-  const totalValue = inventory.reduce((sum, item) => sum + item.currentValue, 0);
-  const totalWeight = inventory.reduce((sum, item) => sum + item.weight, 0);
-  const totalItemTypes = inventory.length;
+  const totalProfit = dailySummary.rows.reduce(
+    (sum: number, item: DailySummary) => sum + item.total_profit,
+    0
+  );
+  const totalWeight = dailySummary.rows.reduce(
+    (sum: number, item: DailySummary) => sum + item.total_qty_kg,
+    0
+  );
+  const totalItemTypes = items.items.length;
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
@@ -27,23 +40,23 @@ export default async function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Total Inventory Value
+                Total Profit (Last 30 Days)
               </CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${totalValue.toLocaleString('en-US')}
+                ${totalProfit.toLocaleString('en-US')}
               </div>
               <p className="text-xs text-muted-foreground">
-                Across all scrap types
+                Based on sales and purchases
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Total Inventory Weight
+                Total Weight (Last 30 Days)
               </CardTitle>
               <Scale className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -52,7 +65,7 @@ export default async function DashboardPage() {
                 {totalWeight.toLocaleString('en-US')} kgs
               </div>
               <p className="text-xs text-muted-foreground">
-                Total weight in stock
+                Total weight transacted
               </p>
             </CardContent>
           </Card>
@@ -64,7 +77,7 @@ export default async function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold">{totalItemTypes}</div>
               <p className="text-xs text-muted-foreground">
-                Distinct scrap categories
+                Distinct item categories
               </p>
             </CardContent>
           </Card>
@@ -73,10 +86,10 @@ export default async function DashboardPage() {
           <div className="space-y-4 xl:col-span-1">
             <Card>
               <CardHeader>
-                <CardTitle>Add Scrap Item</CardTitle>
+                <CardTitle>Record Transaction</CardTitle>
               </CardHeader>
               <CardContent>
-                <TransactionForm items={items} />
+                <TransactionForm items={items.items} />
               </CardContent>
             </Card>
             <Card>
@@ -90,10 +103,10 @@ export default async function DashboardPage() {
           </div>
           <Card className="xl:col-span-2">
             <CardHeader>
-              <CardTitle>Current Inventory</CardTitle>
+              <CardTitle>Recent Transactions</CardTitle>
             </CardHeader>
             <CardContent>
-              <InventoryView inventory={inventory} />
+              <InventoryView transactions={transactions.transactions} />
             </CardContent>
           </Card>
         </div>

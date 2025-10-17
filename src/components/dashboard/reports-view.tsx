@@ -49,6 +49,8 @@ export default function ReportsView() {
   );
   const [endDate, setEndDate] = useState<Date | undefined>(new Date());
 
+  const reportData = state?.summaries as { rows: DailySummary[] } | undefined;
+
   return (
     <div className="space-y-4">
       <form action={formAction} className="space-y-4">
@@ -98,8 +100,16 @@ export default function ReportsView() {
             </PopoverContent>
           </Popover>
         </div>
-        <input type="hidden" name="startDate" value={startDate?.toISOString()} />
-        <input type="hidden" name="endDate" value={endDate?.toISOString()} />
+        <input
+          type="hidden"
+          name="startDate"
+          value={startDate?.toISOString().split('T')[0]}
+        />
+        <input
+          type="hidden"
+          name="endDate"
+          value={endDate?.toISOString().split('T')[0]}
+        />
         <GenerateButton />
       </form>
 
@@ -110,7 +120,7 @@ export default function ReportsView() {
         <p className="text-sm text-muted-foreground">{state.message}</p>
       )}
 
-      {state?.summaries && (
+      {reportData?.rows && (
         <Card>
           <CardHeader>
             <CardTitle>Report Summary</CardTitle>
@@ -129,19 +139,24 @@ export default function ReportsView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {state.summaries.map((summary: DailySummary) => (
-                  <TableRow key={summary.date}>
+                {reportData.rows.map((summary: DailySummary) => (
+                  <TableRow key={summary.transaction_date}>
                     <TableCell>
-                      {format(new Date(summary.date + 'T00:00:00'), 'MMM d, yy')}
+                      {format(
+                        new Date(summary.transaction_date + 'T00:00:00'),
+                        'MMM d, yy'
+                      )}
                     </TableCell>
                     <TableCell
                       className={cn(
                         'text-right font-semibold',
-                        summary.profit >= 0 ? 'text-green-600' : 'text-red-600'
+                        summary.total_profit >= 0
+                          ? 'text-green-600'
+                          : 'text-red-600'
                       )}
                     >
-                      {summary.profit < 0 && '-'}$
-                      {Math.abs(summary.profit).toFixed(2)}
+                      {summary.total_profit < 0 && '-'}$
+                      {Math.abs(summary.total_profit).toFixed(2)}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -2,7 +2,7 @@ import { checkHealth } from '@/lib/api';
 import { Wrench } from 'lucide-react';
 
 export default async function Header() {
-  const { status } = await checkHealth();
+  const { ok } = await checkHealth().catch(() => ({ ok: false }));
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
@@ -15,11 +15,12 @@ export default async function Header() {
       <div className="ml-auto flex items-center gap-2">
         <div
           className={`h-3 w-3 rounded-full ${
-            status === 'ok' ? 'bg-green-500' : 'bg-red-500'
+            ok ? 'bg-green-500' : 'bg-red-500'
           } animate-pulse`}
+          title={ok ? 'API Connected' : 'API Error'}
         ></div>
         <span className="text-sm text-muted-foreground">
-          {status === 'ok' ? 'API Connected' : 'API Error'}
+          {ok ? 'API Connected' : 'API Error'}
         </span>
       </div>
     </header>
