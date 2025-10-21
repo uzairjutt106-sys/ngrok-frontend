@@ -189,6 +189,21 @@ export default function HomePage() {
   const handleDeleteSale = (id: number) =>
     setSales((prev) => prev.filter((s) => s.id !== id));
 
+  // ===== NEW: Item total weight summary (by item from filtered purchases) =====
+  const itemWeightSummary = useMemo(
+    () => {
+      const map = new Map<string, number>();
+      for (const t of filteredTransactions) {
+        const key = t.item_name.trim().toLowerCase();
+        map.set(key, (map.get(key) || 0) + t.quantity_kg);
+      }
+      return Array.from(map.entries())
+        .map(([itemName, totalQty]) => ({ itemName, totalQty }))
+        .sort((a, b) => a.itemName.localeCompare(b.itemName));
+    },
+    [filteredTransactions]
+  );
+
   // -------------------- UI --------------------
   if (loading) return <p className="text-center mt-10">Loading...</p>;
   if (error) return <p className="text-center mt-10 text-red-500">Error: {error}</p>;
@@ -383,6 +398,35 @@ export default function HomePage() {
         </table>
       </div>
 
+      {/* ===== NEW: Total Weight per Item ===== */}
+      <div className="overflow-x-auto mt-10">
+        <h2 className="text-2xl font-semibold mb-3">📊 Total Weight per Item</h2>
+        <table className="w-full border border-gray-300 rounded-lg">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="p-2 text-left">Item Name</th>
+              <th className="p-2 text-left">Total Weight (kg)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {itemWeightSummary.length ? (
+              itemWeightSummary.map((row) => (
+                <tr key={row.itemName} className="border-t">
+                  <td className="p-2 capitalize">{row.itemName}</td>
+                  <td className="p-2">{row.totalQty.toFixed(2)}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="p-3 text-gray-500" colSpan={2}>
+                  No purchase data available.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
       {/* -------------------- Sales & Profit (Separate Table) -------------------- */}
       <div className="mt-10">
         <h2 className="text-2xl font-semibold mb-3">💰 Sales & Profit (Computed)</h2>
@@ -524,4 +568,3 @@ export default function HomePage() {
     </main>
   );
 }
-
