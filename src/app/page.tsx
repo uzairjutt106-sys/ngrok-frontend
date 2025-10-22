@@ -15,8 +15,11 @@ interface SaleEntry {
   item_name: string;
   sale_rate: number;
   quantity_kg: number;
-  date: string; // YYYY-MM-DD
+  sale_date: string; // backend field
 }
+
+// Helper to format YYYY-MM-DD → keep UI consistent
+const today = () => new Date().toISOString().slice(0, 10);
 
 export default function HomePage() {
   // -------------------- Purchases (Transactions) --------------------
@@ -25,24 +28,25 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
 
-  // Add-purchase form (now with date)
+  // Add-purchase form
   const [itemName, setItemName] = useState('');
   const [purchaseRate, setPurchaseRate] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  ); // YYYY-MM-DD
+  const [purchaseDate, setPurchaseDate] = useState(today());
 
   // Filters for transactions
   const [filterItem, setFilterItem] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
+  const API = 'http://127.0.0.1:8000';
+  const API_KEY = '@uzair143';
+
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/transactions', {
-        headers: { 'X-API-Key': '@uzair143' },
+      const response = await fetch(`${API}/transactions`, {
+        headers: { 'X-API-Key': API_KEY },
         cache: 'no-store',
       });
       if (!response.ok) throw new Error(`HTTP error! ${response.status}`);
@@ -65,37 +69,34 @@ export default function HomePage() {
     e.preventDefault();
     const pr = Number(purchaseRate);
     const q = Number(quantity);
-    if ([pr, q].some((n) => Number.isNaN(n) || n <= 0)) {
+    if (!Number.isFinite(pr) || pr <= 0 || !Number.isFinite(q) || q <= 0) {
       alert('Please enter valid purchase rate and quantity (> 0).');
       return;
     }
-
     try {
-      const response = await fetch('http://127.0.0.1:8000/transactions', {
+      const response = await fetch(`${API}/transactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': '@uzair143',
+          'X-API-Key': API_KEY,
         },
         body: JSON.stringify({
           item_name: itemName,
           purchase_rate: pr,
-          sale_rate: 0,                 // ✅ satisfy backend that still expects sale_rate
           quantity_kg: q,
           transaction_date: purchaseDate,
+          // sale_rate omitted on purpose (backend allows None)
         }),
       });
-
       if (!response.ok) {
         const txt = await response.text();
         throw new Error(`${response.status} ${response.statusText}: ${txt}`);
       }
-
       await fetchTransactions();
       setItemName('');
       setPurchaseRate('');
       setQuantity('');
-      setPurchaseDate(new Date().toISOString().slice(0, 10)); // reset to today
+      setPurchaseDate(today());
     } catch (err: any) {
       alert('Failed to add transaction: ' + err.message);
     }
@@ -104,9 +105,9 @@ export default function HomePage() {
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this transaction?')) return;
     try {
-      const response = await fetch(`http://127.0.0.1:8000/transactions/${id}`, {
+      const response = await fetch(`${API}/transactions/${id}`, {
         method: 'DELETE',
-        headers: { 'X-API-Key': '@uzair143' },
+        headers: { 'X-API-Key': API_KEY },
       });
       if (!response.ok) throw new Error(`Failed to delete (status ${response.status})`);
       await fetchTransactions();
@@ -145,26 +146,32 @@ export default function HomePage() {
     return Object.values(map).sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [filteredTransactions]);
 
-  // -------------------- Sales & Profit (Separate) --------------------
+  // -------------------- Sales (persisted on server) --------------------
   const [sales, setSales] = useState<SaleEntry[]>([]);
   const [saleItem, setSaleItem] = useState('');
   const [saleRateInput, setSaleRateInput] = useState('');
   const [saleQtyInput, setSaleQtyInput] = useState('');
-  const [saleDate, setSaleDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [saleDate, setSaleDate] = useState(today());
 
-  // ✅ Persist sales in localStorage
-  useEffect(() => {
+  const fetchSales = async () => {
     try {
-      const saved = localStorage.getItem('sales');
-      if (saved) setSales(JSON.parse(saved));
-    } catch {}
+      const resp = await fetch(`${API}/sales`, {
+        headers: { 'X-API-Key': API_KEY },
+        cache: 'no-store',
+      });
+      if (!resp.ok) throw new Error(`HTTP error! ${resp.status}`);
+      const data = await resp.json();
+      setSales(data.sales || []);
+    } catch (err: any) {
+      console.error('Load sales failed:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchSales();
   }, []);
-  useEffect(() => {
-    try {
-      localStorage.setItem('sales', JSON.stringify(sales));
-    } catch {}
-  }, [sales]);
 
+  // Weighted-average purchase rate per item (built from all transactions)
   const avgPurchaseByItem = useMemo(() => {
     const agg = new Map<string, { qty: number; cost: number }>();
     for (const t of transactions) {
@@ -185,30 +192,55 @@ export default function HomePage() {
   const getAvgPurchase = (item: string) =>
     avgPurchaseByItem.get(item.trim().toLowerCase()) ?? 0;
 
-  const handleAddSale = (e: FormEvent) => {
+  const handleAddSale = async (e: FormEvent) => {
     e.preventDefault();
     const sr = Number(saleRateInput);
     const q = Number(saleQtyInput);
     if (!saleItem.trim()) return alert('Enter item name');
-    if ([sr, q].some((n) => Number.isNaN(n) || n <= 0)) {
-      alert('Enter valid sale rate and quantity (> 0)');
-      return;
+    if (!Number.isFinite(sr) || sr <= 0) return alert('Enter valid sale rate (> 0, integer)');
+    if (!Number.isFinite(q) || q <= 0) return alert('Enter valid quantity (> 0)');
+
+    try {
+      const resp = await fetch(`${API}/sales`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY,
+        },
+        body: JSON.stringify({
+          item_name: saleItem.trim(),
+          sale_rate: sr,
+          quantity_kg: q,
+          sale_date: saleDate,
+        }),
+      });
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(`${resp.status} ${resp.statusText}: ${txt}`);
+      }
+      await fetchSales();
+      setSaleItem('');
+      setSaleRateInput('');
+      setSaleQtyInput('');
+      setSaleDate(today());
+    } catch (err: any) {
+      alert('Failed to add sale: ' + err.message);
     }
-    const newEntry: SaleEntry = {
-      id: Date.now(),
-      item_name: saleItem.trim(),
-      sale_rate: sr,
-      quantity_kg: q,
-      date: saleDate || new Date().toISOString().slice(0, 10),
-    };
-    setSales((prev) => [newEntry, ...prev]);
-    setSaleItem('');
-    setSaleRateInput('');
-    setSaleQtyInput('');
   };
 
-  const handleDeleteSale = (id: number) =>
-    setSales((prev) => prev.filter((s) => s.id !== id));
+  const handleDeleteSale = async (id: number) => {
+    if (!confirm('Delete this sale entry?')) return;
+    try {
+      const resp = await fetch(`${API}/sales/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-API-Key': API_KEY },
+      });
+      if (!resp.ok) throw new Error(`Failed to delete sale (${resp.status})`);
+      await fetchSales();
+    } catch (err: any) {
+      alert('Delete sale failed: ' + err.message);
+    }
+  };
 
   // ===== Total Weight per Item (by item from filtered purchases) =====
   const itemWeightSummary = useMemo(() => {
@@ -255,23 +287,26 @@ export default function HomePage() {
             required
             list="items-list"
           />
-        <datalist id="items-list">
+          <datalist id="items-list">
             {[...new Set(transactions.map((t) => t.item_name))].map((name) => (
               <option key={name} value={name} />
             ))}
           </datalist>
 
+          {/* Integers only for purchase rate */}
           <input
             type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
+            inputMode="numeric"
+            step={1}
+            min={1}
             placeholder="Purchase rate"
             value={purchaseRate}
-            onChange={(e) => setPurchaseRate(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value.replace(/\D+/g, '');
+              setPurchaseRate(v);
+            }}
             onWheel={(e) => (e.target as HTMLInputElement).blur()}
             className="border p-2 rounded w-full focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
-            autoComplete="off"
             required
           />
 
@@ -288,7 +323,6 @@ export default function HomePage() {
             required
           />
 
-          {/* purchase date */}
           <input
             type="date"
             value={purchaseDate}
@@ -356,7 +390,7 @@ export default function HomePage() {
               return (
                 <tr key={t.id} className="border-t">
                   <td className="p-2">{t.item_name}</td>
-                  <td className="p-2">{t.purchase_rate.toFixed(2)}</td>
+                  <td className="p-2">{t.purchase_rate}</td>
                   <td className="p-2">{t.quantity_kg.toFixed(2)}</td>
                   <td className="p-2">{amount.toFixed(2)}</td>
                   <td className="p-2">{t.transaction_date.split('T')[0]}</td>
@@ -453,10 +487,11 @@ export default function HomePage() {
         </table>
       </div>
 
-      {/* Sales & Profit (Computed) */}
+      {/* -------------------- Sales & Profit (Persisted) -------------------- */}
       <div className="mt-10">
         <h2 className="text-2xl font-semibold mb-3">💰 Sales & Profit (Computed)</h2>
 
+        {/* Add a Sale Entry */}
         <form
           onSubmit={handleAddSale}
           className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6 shadow-sm"
@@ -472,14 +507,18 @@ export default function HomePage() {
               required
             />
 
+            {/* Integers only for sale rate */}
             <input
               type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0.01"
+              inputMode="numeric"
+              step={1}
+              min={1}
               placeholder="Sale rate"
               value={saleRateInput}
-              onChange={(e) => setSaleRateInput(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value.replace(/\D+/g, '');
+                setSaleRateInput(v);
+              }}
               onWheel={(e) => (e.target as HTMLInputElement).blur()}
               className="border p-2 rounded w-full"
               required
@@ -512,16 +551,20 @@ export default function HomePage() {
               Add Sale
             </button>
 
+            {/* Context hint */}
             <div className="md:col-span-6 col-span-2 text-sm text-gray-600">
               Avg purchase for <span className="font-medium">{saleItem || '—'}</span>:{' '}
               <span className="font-semibold">
-                {saleItem ? getAvgPurchase(saleItem).toFixed(2) : '0.00'}
+                {saleItem
+                  ? (getAvgPurchase(saleItem) || 0).toFixed(2)
+                  : '0.00'}
               </span>
               {saleItem && getAvgPurchase(saleItem) === 0 && ' (no purchase history found)'}
             </div>
           </div>
         </form>
 
+        {/* Sales & Profit Table */}
         <div className="overflow-x-auto">
           <table className="w-full border border-gray-300 rounded-lg">
             <thead className="bg-gray-100">
@@ -536,35 +579,36 @@ export default function HomePage() {
               </tr>
             </thead>
             <tbody>
-              {sales.map((s) => {
-                const avgPurchase = getAvgPurchase(s.item_name);
-                const profit = (s.sale_rate - avgPurchase) * s.quantity_kg;
-                return (
-                  <tr key={s.id} className="border-t">
-                    <td className="p-2">{s.item_name}</td>
-                    <td className="p-2">{avgPurchase.toFixed(2)}</td>
-                    <td className="p-2">{s.sale_rate.toFixed(2)}</td>
-                    <td className="p-2">{s.quantity_kg.toFixed(2)}</td>
-                    <td
-                      className={`p-2 font-semibold ${
-                        profit >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}
-                    >
-                      {profit.toFixed(2)}
-                    </td>
-                    <td className="p-2">{s.date}</td>
-                    <td className="p-2">
-                      <button
-                        onClick={() => handleDeleteSale(s.id)}
-                        className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+              {sales.length ? (
+                sales.map((s) => {
+                  const avgPurchase = getAvgPurchase(s.item_name);
+                  const profit = (s.sale_rate - avgPurchase) * s.quantity_kg;
+                  return (
+                    <tr key={s.id} className="border-t">
+                      <td className="p-2">{s.item_name}</td>
+                      <td className="p-2">{avgPurchase.toFixed(2)}</td>
+                      <td className="p-2">{s.sale_rate}</td>
+                      <td className="p-2">{s.quantity_kg.toFixed(2)}</td>
+                      <td
+                        className={`p-2 font-semibold ${
+                          profit >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}
                       >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {sales.length === 0 && (
+                        {profit.toFixed(2)}
+                      </td>
+                      <td className="p-2">{s.sale_date}</td>
+                      <td className="p-2">
+                        <button
+                          onClick={() => handleDeleteSale(s.id)}
+                          className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
                 <tr>
                   <td className="p-3 text-gray-500" colSpan={7}>
                     No sales added yet.
@@ -574,6 +618,7 @@ export default function HomePage() {
             </tbody>
           </table>
 
+          {/* Sales total profit */}
           <div className="text-right mt-3 font-bold text-lg">
             Sales Total Profit:{' '}
             <span className="text-emerald-600">
