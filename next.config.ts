@@ -29,14 +29,22 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // ✅ Allow these origins during local development
-  experimental: {
-    allowedDevOrigins: [
-      'http://localhost:4000',
-      'http://127.0.0.1:4000',
-      'http://192.168.0.113:4000', // your local network IP
-    ],
-  },
+
+  // ✅ Correct placement (NOT under experimental)
+  allowedDevOrigins: [
+    "http://192.168.0.108:3000",
+    "http://192.168.0.108:4000",
+    "http://192.168.0.108:4001",
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://192.168.0.113:3000',
+    'http://localhost:4000',
+    'http://127.0.0.1:4000',
+    'http://192.168.0.113:4000',
+    'http://localhost:4001',
+    'http://127.0.0.1:4001',
+    'http://192.168.0.113:4001',
+  ],
 };
 
 export default nextConfig;

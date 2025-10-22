@@ -25,10 +25,13 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
 
-  // Add-purchase form (no sale rate here)
+  // Add-purchase form (now with date)
   const [itemName, setItemName] = useState('');
   const [purchaseRate, setPurchaseRate] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  ); // YYYY-MM-DD
 
   // Filters for transactions
   const [filterItem, setFilterItem] = useState('');
@@ -77,14 +80,22 @@ export default function HomePage() {
         body: JSON.stringify({
           item_name: itemName,
           purchase_rate: pr,
+          sale_rate: 0,                 // ✅ satisfy backend that still expects sale_rate
           quantity_kg: q,
+          transaction_date: purchaseDate,
         }),
       });
-      if (!response.ok) throw new Error(`Error: ${response.statusText}`);
+
+      if (!response.ok) {
+        const txt = await response.text();
+        throw new Error(`${response.status} ${response.statusText}: ${txt}`);
+      }
+
       await fetchTransactions();
       setItemName('');
       setPurchaseRate('');
       setQuantity('');
+      setPurchaseDate(new Date().toISOString().slice(0, 10)); // reset to today
     } catch (err: any) {
       alert('Failed to add transaction: ' + err.message);
     }
@@ -131,19 +142,29 @@ export default function HomePage() {
     for (const d of Object.values(map)) {
       d.avgPurchaseRate = d.totalQty > 0 ? d.totalPurchaseAmount / d.totalQty : 0;
     }
-    // most recent first
     return Object.values(map).sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [filteredTransactions]);
 
   // -------------------- Sales & Profit (Separate) --------------------
-  // Local-only sales list (can be moved to API later)
   const [sales, setSales] = useState<SaleEntry[]>([]);
   const [saleItem, setSaleItem] = useState('');
   const [saleRateInput, setSaleRateInput] = useState('');
   const [saleQtyInput, setSaleQtyInput] = useState('');
   const [saleDate, setSaleDate] = useState(() => new Date().toISOString().slice(0, 10));
 
-  // Weighted-average purchase rate per item (built from all transactions)
+  // ✅ Persist sales in localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('sales');
+      if (saved) setSales(JSON.parse(saved));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem('sales', JSON.stringify(sales));
+    } catch {}
+  }, [sales]);
+
   const avgPurchaseByItem = useMemo(() => {
     const agg = new Map<string, { qty: number; cost: number }>();
     for (const t of transactions) {
@@ -189,20 +210,17 @@ export default function HomePage() {
   const handleDeleteSale = (id: number) =>
     setSales((prev) => prev.filter((s) => s.id !== id));
 
-  // ===== NEW: Item total weight summary (by item from filtered purchases) =====
-  const itemWeightSummary = useMemo(
-    () => {
-      const map = new Map<string, number>();
-      for (const t of filteredTransactions) {
-        const key = t.item_name.trim().toLowerCase();
-        map.set(key, (map.get(key) || 0) + t.quantity_kg);
-      }
-      return Array.from(map.entries())
-        .map(([itemName, totalQty]) => ({ itemName, totalQty }))
-        .sort((a, b) => a.itemName.localeCompare(b.itemName));
-    },
-    [filteredTransactions]
-  );
+  // ===== Total Weight per Item (by item from filtered purchases) =====
+  const itemWeightSummary = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of filteredTransactions) {
+      const key = t.item_name.trim().toLowerCase();
+      map.set(key, (map.get(key) || 0) + t.quantity_kg);
+    }
+    return Array.from(map.entries())
+      .map(([itemName, totalQty]) => ({ itemName, totalQty }))
+      .sort((a, b) => a.itemName.localeCompare(b.itemName));
+  }, [filteredTransactions]);
 
   // -------------------- UI --------------------
   if (loading) return <p className="text-center mt-10">Loading...</p>;
@@ -227,7 +245,7 @@ export default function HomePage() {
         className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-8 shadow-sm"
       >
         <h2 className="text-xl font-semibold mb-3">Add Purchase</h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
           <input
             type="text"
             placeholder="Item name"
@@ -237,7 +255,7 @@ export default function HomePage() {
             required
             list="items-list"
           />
-          <datalist id="items-list">
+        <datalist id="items-list">
             {[...new Set(transactions.map((t) => t.item_name))].map((name) => (
               <option key={name} value={name} />
             ))}
@@ -268,6 +286,14 @@ export default function HomePage() {
             onWheel={(e) => (e.target as HTMLInputElement).blur()}
             className="border p-2 rounded w-full"
             required
+          />
+
+          {/* purchase date */}
+          <input
+            type="date"
+            value={purchaseDate}
+            onChange={(e) => setPurchaseDate(e.target.value)}
+            className="border p-2 rounded w-full"
           />
 
           <button
@@ -311,7 +337,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Purchases Table (no sale/profit columns) */}
+      {/* Purchases Table */}
       <div className="overflow-x-auto mb-6">
         <table className="w-full border border-gray-300 rounded-lg">
           <thead className="bg-gray-100">
@@ -398,7 +424,7 @@ export default function HomePage() {
         </table>
       </div>
 
-      {/* ===== NEW: Total Weight per Item ===== */}
+      {/* Total Weight per Item */}
       <div className="overflow-x-auto mt-10">
         <h2 className="text-2xl font-semibold mb-3">📊 Total Weight per Item</h2>
         <table className="w-full border border-gray-300 rounded-lg">
@@ -427,11 +453,10 @@ export default function HomePage() {
         </table>
       </div>
 
-      {/* -------------------- Sales & Profit (Separate Table) -------------------- */}
+      {/* Sales & Profit (Computed) */}
       <div className="mt-10">
         <h2 className="text-2xl font-semibold mb-3">💰 Sales & Profit (Computed)</h2>
 
-        {/* Add a Sale Entry */}
         <form
           onSubmit={handleAddSale}
           className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6 shadow-sm"
@@ -443,7 +468,7 @@ export default function HomePage() {
               value={saleItem}
               onChange={(e) => setSaleItem(e.target.value)}
               className="border p-2 rounded w-full"
-              list="items-list" // re-use the same datalist
+              list="items-list"
               required
             />
 
@@ -487,7 +512,6 @@ export default function HomePage() {
               Add Sale
             </button>
 
-            {/* Context hint */}
             <div className="md:col-span-6 col-span-2 text-sm text-gray-600">
               Avg purchase for <span className="font-medium">{saleItem || '—'}</span>:{' '}
               <span className="font-semibold">
@@ -498,13 +522,12 @@ export default function HomePage() {
           </div>
         </form>
 
-        {/* Sales & Profit Table */}
         <div className="overflow-x-auto">
           <table className="w-full border border-gray-300 rounded-lg">
             <thead className="bg-gray-100">
               <tr>
                 <th className="p-2 text-left">Item</th>
-                <th className="p-2 text-left">Avg Purchase Rate</th>
+                <th className="p-2 text-left">Purchase Rate</th>
                 <th className="p-2 text-left">Sale Rate</th>
                 <th className="p-2 text-left">Quantity (kg)</th>
                 <th className="p-2 text-left">Profit</th>
@@ -551,7 +574,6 @@ export default function HomePage() {
             </tbody>
           </table>
 
-          {/* Sales total profit */}
           <div className="text-right mt-3 font-bold text-lg">
             Sales Total Profit:{' '}
             <span className="text-emerald-600">
