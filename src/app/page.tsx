@@ -115,6 +115,7 @@ export default function HomePage() {
       });
       if (!response.ok) throw new Error(`Failed to delete (status ${response.status})`);
       await fetchTransactions();
+      await fetchSales(); // keep stocks in sync
     } catch (err: any) {
       alert('Delete failed: ' + err.message);
     }
@@ -180,25 +181,19 @@ export default function HomePage() {
     return matchesItem && matchesFrom && matchesTo;
   });
 
-  // Daily PURCHASE summary (weighted rate, but label now "Purchase Rate")
   // ===== Daily PURCHASE summary (no purchase rate column) =====
-const dailyPurchaseSummary = useMemo(() => {
-  const map: Record<
-    string,
-    { date: string; totalPurchaseAmount: number; totalQty: number }
-  > = {};
-  for (const t of filteredTransactions) {
-    const day = t.transaction_date.split('T')[0];
-    if (!map[day]) {
-      map[day] = { date: day, totalPurchaseAmount: 0, totalQty: 0 };
+  const dailyPurchaseSummary = useMemo(() => {
+    const map: Record<string, { date: string; totalPurchaseAmount: number; totalQty: number }> = {};
+    for (const t of filteredTransactions) {
+      const day = t.transaction_date.split('T')[0];
+      if (!map[day]) {
+        map[day] = { date: day, totalPurchaseAmount: 0, totalQty: 0 };
+      }
+      map[day].totalPurchaseAmount += (t.purchase_rate || 0) * t.quantity_kg;
+      map[day].totalQty += t.quantity_kg;
     }
-    map[day].totalPurchaseAmount += (t.purchase_rate || 0) * t.quantity_kg;
-    map[day].totalQty += t.quantity_kg;
-  }
-  // sort newest first
-  return Object.values(map).sort((a, b) => (a.date < b.date ? 1 : -1));
-}, [filteredTransactions]);
-
+    return Object.values(map).sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [filteredTransactions]);
 
   // -------------------- Sales (persisted on server) --------------------
   const [sales, setSales] = useState<SaleEntry[]>([]);
@@ -225,7 +220,7 @@ const dailyPurchaseSummary = useMemo(() => {
     fetchSales();
   }, []);
 
-  // Weighted-average purchase rate per item (built from all transactions)
+  // Weighted-average purchase rate per item (built from ALL purchases)
   const avgPurchaseByItem = useMemo(() => {
     const agg = new Map<string, { qty: number; cost: number }>();
     for (const t of transactions) {
@@ -296,17 +291,44 @@ const dailyPurchaseSummary = useMemo(() => {
     }
   };
 
-  // ===== Total Weight per Item (by item from filtered purchases) =====
-  const itemWeightSummary = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const t of filteredTransactions) {
+  // ===== Stocks (Purchased, Sold, Net, Realized Profit) =====
+  const stocksSummary = useMemo(() => {
+    const purchasedByItem = new Map<string, number>();
+    const soldByItem = new Map<string, number>();
+    const profitByItem = new Map<string, number>();
+
+    // Purchases
+    for (const t of transactions) {
       const key = t.item_name.trim().toLowerCase();
-      map.set(key, (map.get(key) || 0) + t.quantity_kg);
+      purchasedByItem.set(key, (purchasedByItem.get(key) || 0) + t.quantity_kg);
     }
-    return Array.from(map.entries())
-      .map(([itemName, totalQty]) => ({ itemName, totalQty }))
-      .sort((a, b) => a.itemName.localeCompare(b.itemName));
-  }, [filteredTransactions]);
+
+    // Sales + realized profit using weighted avg purchase
+    for (const s of sales) {
+      const key = s.item_name.trim().toLowerCase();
+      soldByItem.set(key, (soldByItem.get(key) || 0) + s.quantity_kg);
+
+      const avg = getAvgPurchase(s.item_name);
+      const profit = (s.sale_rate - avg) * s.quantity_kg;
+      profitByItem.set(key, (profitByItem.get(key) || 0) + profit);
+    }
+
+    const items = new Set<string>([
+      ...Array.from(purchasedByItem.keys()),
+      ...Array.from(soldByItem.keys()),
+    ]);
+
+    const rows = Array.from(items).map((key) => {
+      const purchased = purchasedByItem.get(key) || 0;
+      const sold = soldByItem.get(key) || 0;
+      const net = purchased - sold;
+      const realizedProfit = profitByItem.get(key) || 0;
+      return { itemName: key, purchased, sold, net, realizedProfit };
+    });
+
+    rows.sort((a, b) => a.itemName.localeCompare(b.itemName));
+    return rows;
+  }, [transactions, sales, avgPurchaseByItem]);
 
   // -------------------- UI --------------------
   if (loading) return <p className="text-center mt-10">Loading...</p>;
@@ -417,7 +439,9 @@ const dailyPurchaseSummary = useMemo(() => {
             className="border p-2 rounded w-full"
           />
           <button
-            onClick={fetchTransactions}
+            onClick={async () => {
+              await Promise.all([fetchTransactions(), fetchSales()]);
+            }}
             className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
           >
             Reset
@@ -565,58 +589,69 @@ const dailyPurchaseSummary = useMemo(() => {
       </div>
 
       {/* ✅ Daily Purchase Summary (no purchase rate column) */}
-<div className="overflow-x-auto">
-  <h2 className="text-2xl font-semibold mb-3">📅 Daily Purchase Summary</h2>
-  <table className="w-full border border-gray-300 rounded-lg">
-    <thead className="bg-gray-100">
-      <tr>
-        <th className="p-2 text-left">Date</th>
-        <th className="p-2 text-left">Total Qty (kg)</th>
-        <th className="p-2 text-left">Total Purchase Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-      {dailyPurchaseSummary.map((day) => (
-        <tr key={day.date} className="border-t">
-          <td className="p-2">{day.date}</td>
-          <td className="p-2">{day.totalQty.toFixed(2)}</td>
-          <td className="p-2">{day.totalPurchaseAmount.toFixed(2)}</td>
-        </tr>
-      ))}
-      {dailyPurchaseSummary.length === 0 && (
-        <tr>
-          <td className="p-3 text-gray-500" colSpan={3}>
-            No purchases to summarize.
-          </td>
-        </tr>
-      )}
-    </tbody>
-  </table>
-</div>
-
-
-      {/* Total Weight per Item */}
-      <div className="overflow-x-auto mt-10">
-        <h2 className="text-2xl font-semibold mb-3">📊 Total Weight per Item</h2>
+      <div className="overflow-x-auto">
+        <h2 className="text-2xl font-semibold mb-3">📅 Daily Purchase Summary</h2>
         <table className="w-full border border-gray-300 rounded-lg">
           <thead className="bg-gray-100">
             <tr>
-              <th className="p-2 text-left">Item Name</th>
-              <th className="p-2 text-left">Total Weight (kg)</th>
+              <th className="p-2 text-left">Date</th>
+              <th className="p-2 text-left">Total Qty (kg)</th>
+              <th className="p-2 text-left">Total Purchase Amount</th>
             </tr>
           </thead>
           <tbody>
-            {itemWeightSummary.length ? (
-              itemWeightSummary.map((row) => (
+            {dailyPurchaseSummary.map((day) => (
+              <tr key={day.date} className="border-t">
+                <td className="p-2">{day.date}</td>
+                <td className="p-2">{day.totalQty.toFixed(2)}</td>
+                <td className="p-2">{day.totalPurchaseAmount.toFixed(2)}</td>
+              </tr>
+            ))}
+            {dailyPurchaseSummary.length === 0 && (
+              <tr>
+                <td className="p-3 text-gray-500" colSpan={3}>
+                  No purchases to summarize.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 📦 Stocks (Purchased, Sold, Net, Realized Profit) */}
+      <div className="overflow-x-auto mt-10">
+        <h2 className="text-2xl font-semibold mb-3">📦 Stocks (Net Weight & Profit)</h2>
+        <table className="w-full border border-gray-300 rounded-lg">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="p-2 text-left">Item</th>
+              <th className="p-2 text-left">Purchased (kg)</th>
+              <th className="p-2 text-left">Sold (kg)</th>
+              <th className="p-2 text-left">Net (kg)</th>
+              <th className="p-2 text-left">Realized Profit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stocksSummary.length ? (
+              stocksSummary.map((row) => (
                 <tr key={row.itemName} className="border-t">
                   <td className="p-2 capitalize">{row.itemName}</td>
-                  <td className="p-2">{row.totalQty.toFixed(2)}</td>
+                  <td className="p-2">{row.purchased.toFixed(2)}</td>
+                  <td className="p-2">{row.sold.toFixed(2)}</td>
+                  <td className="p-2">{row.net.toFixed(2)}</td>
+                  <td
+                    className={`p-2 font-semibold ${
+                      row.realizedProfit >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}
+                  >
+                    {row.realizedProfit.toFixed(2)}
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td className="p-3 text-gray-500" colSpan={2}>
-                  No purchase data available.
+                <td className="p-3 text-gray-500" colSpan={5}>
+                  No stock data yet.
                 </td>
               </tr>
             )}
@@ -629,78 +664,53 @@ const dailyPurchaseSummary = useMemo(() => {
         sales={sales}
         onReload={fetchSales}
         avgPurchaseByItem={avgPurchaseByItem}
+        handleAddSale={handleAddSale}
+        handleDeleteSale={handleDeleteSale}
+        saleItem={saleItem}
+        setSaleItem={setSaleItem}
+        saleRateInput={saleRateInput}
+        setSaleRateInput={setSaleRateInput}
+        saleQtyInput={saleQtyInput}
+        setSaleQtyInput={setSaleQtyInput}
+        saleDate={saleDate}
+        setSaleDate={setSaleDate}
       />
     </main>
   );
 }
 
-/* -------- Sales panel kept identical in look; just factored for readability -------- */
+/* -------- Sales panel (kept same styling) -------- */
 function SalesPanel({
   sales,
   onReload,
   avgPurchaseByItem,
+  handleAddSale,
+  handleDeleteSale,
+  saleItem,
+  setSaleItem,
+  saleRateInput,
+  setSaleRateInput,
+  saleQtyInput,
+  setSaleQtyInput,
+  saleDate,
+  setSaleDate,
 }: {
   sales: SaleEntry[];
   onReload: () => Promise<void>;
   avgPurchaseByItem: Map<string, number>;
+  handleAddSale: (e: FormEvent) => Promise<void>;
+  handleDeleteSale: (id: number) => Promise<void>;
+  saleItem: string;
+  setSaleItem: (v: string) => void;
+  saleRateInput: string;
+  setSaleRateInput: (v: string) => void;
+  saleQtyInput: string;
+  setSaleQtyInput: (v: string) => void;
+  saleDate: string;
+  setSaleDate: (v: string) => void;
 }) {
-  const [saleItem, setSaleItem] = useState('');
-  const [saleRateInput, setSaleRateInput] = useState('');
-  const [saleQtyInput, setSaleQtyInput] = useState('');
-  const [saleDate, setSaleDate] = useState(today());
-
   const getAvgPurchase = (item: string) =>
     avgPurchaseByItem.get(item.trim().toLowerCase()) ?? 0;
-
-  const addSale = async (e: FormEvent) => {
-    e.preventDefault();
-    const sr = Number(saleRateInput);
-    const q = Number(saleQtyInput);
-    if (!saleItem.trim()) return alert('Enter item name');
-    if (!Number.isFinite(sr) || sr <= 0) return alert('Enter valid sale rate (> 0, integer)');
-    if (!Number.isFinite(q) || q <= 0) return alert('Enter valid quantity (> 0)');
-
-    try {
-      const resp = await fetch(`${API}/sales`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': API_KEY,
-        },
-        body: JSON.stringify({
-          item_name: saleItem.trim(),
-          sale_rate: Math.trunc(sr),
-          quantity_kg: q,
-          sale_date: saleDate,
-        }),
-      });
-      if (!resp.ok) {
-        const txt = await resp.text();
-        throw new Error(`${resp.status} ${resp.statusText}: ${txt}`);
-      }
-      await onReload();
-      setSaleItem('');
-      setSaleRateInput('');
-      setSaleQtyInput('');
-      setSaleDate(today());
-    } catch (err: any) {
-      alert('Failed to add sale: ' + err.message);
-    }
-  };
-
-  const deleteSale = async (id: number) => {
-    if (!confirm('Delete this sale entry?')) return;
-    try {
-      const resp = await fetch(`${API}/sales/${id}`, {
-        method: 'DELETE',
-        headers: { 'X-API-Key': API_KEY },
-      });
-      if (!resp.ok) throw new Error(`Failed to delete sale (${resp.status})`);
-      await onReload();
-    } catch (err: any) {
-      alert('Delete sale failed: ' + err.message);
-    }
-  };
 
   const totalProfit = sales.reduce((sum, s) => {
     const avgPurchase = getAvgPurchase(s.item_name);
@@ -713,7 +723,7 @@ function SalesPanel({
 
       {/* Add a Sale Entry */}
       <form
-        onSubmit={addSale}
+        onSubmit={handleAddSale}
         className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6 shadow-sm"
       >
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
@@ -815,7 +825,7 @@ function SalesPanel({
                     <td className="p-2">{s.sale_date}</td>
                     <td className="p-2">
                       <button
-                        onClick={() => deleteSale(s.id)}
+                        onClick={() => handleDeleteSale(s.id)}
                         className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
                       >
                         Delete
