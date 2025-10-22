@@ -181,24 +181,24 @@ export default function HomePage() {
   });
 
   // Daily PURCHASE summary (weighted rate, but label now "Purchase Rate")
-  const dailyPurchaseSummary = useMemo(() => {
-    const map: Record<
-      string,
-      { date: string; totalPurchaseAmount: number; totalQty: number; purchaseRate: number }
-    > = {};
-    for (const t of filteredTransactions) {
-      const day = t.transaction_date.split('T')[0];
-      if (!map[day]) {
-        map[day] = { date: day, totalPurchaseAmount: 0, totalQty: 0, purchaseRate: 0 };
-      }
-      map[day].totalPurchaseAmount += Math.trunc(t.purchase_rate) * t.quantity_kg;
-      map[day].totalQty += t.quantity_kg;
+  // ===== Daily PURCHASE summary (no purchase rate column) =====
+const dailyPurchaseSummary = useMemo(() => {
+  const map: Record<
+    string,
+    { date: string; totalPurchaseAmount: number; totalQty: number }
+  > = {};
+  for (const t of filteredTransactions) {
+    const day = t.transaction_date.split('T')[0];
+    if (!map[day]) {
+      map[day] = { date: day, totalPurchaseAmount: 0, totalQty: 0 };
     }
-    for (const d of Object.values(map)) {
-      d.purchaseRate = d.totalQty > 0 ? d.totalPurchaseAmount / d.totalQty : 0; // weighted
-    }
-    return Object.values(map).sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [filteredTransactions]);
+    map[day].totalPurchaseAmount += (t.purchase_rate || 0) * t.quantity_kg;
+    map[day].totalQty += t.quantity_kg;
+  }
+  // sort newest first
+  return Object.values(map).sort((a, b) => (a.date < b.date ? 1 : -1));
+}, [filteredTransactions]);
+
 
   // -------------------- Sales (persisted on server) --------------------
   const [sales, setSales] = useState<SaleEntry[]>([]);
@@ -564,37 +564,36 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Daily Purchase Summary (label changed) */}
-      <div className="overflow-x-auto">
-        <h2 className="text-2xl font-semibold mb-3">📅 Daily Purchase Summary</h2>
-        <table className="w-full border border-gray-300 rounded-lg">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-2 text-left">Date</th>
-              <th className="p-2 text-left">Total Qty (kg)</th>
-              <th className="p-2 text-left">Total Purchase Amount</th>
-              <th className="p-2 text-left">Purchase Rate</th> {/* <- renamed */}
-            </tr>
-          </thead>
-          <tbody>
-            {dailyPurchaseSummary.map((day) => (
-              <tr key={day.date} className="border-t">
-                <td className="p-2">{day.date}</td>
-                <td className="p-2">{day.totalQty.toFixed(2)}</td>
-                <td className="p-2">{day.totalPurchaseAmount.toFixed(2)}</td>
-                <td className="p-2">{day.purchaseRate.toFixed(2)}</td>
-              </tr>
-            ))}
-            {dailyPurchaseSummary.length === 0 && (
-              <tr>
-                <td className="p-3 text-gray-500" colSpan={4}>
-                  No purchases to summarize.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* ✅ Daily Purchase Summary (no purchase rate column) */}
+<div className="overflow-x-auto">
+  <h2 className="text-2xl font-semibold mb-3">📅 Daily Purchase Summary</h2>
+  <table className="w-full border border-gray-300 rounded-lg">
+    <thead className="bg-gray-100">
+      <tr>
+        <th className="p-2 text-left">Date</th>
+        <th className="p-2 text-left">Total Qty (kg)</th>
+        <th className="p-2 text-left">Total Purchase Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {dailyPurchaseSummary.map((day) => (
+        <tr key={day.date} className="border-t">
+          <td className="p-2">{day.date}</td>
+          <td className="p-2">{day.totalQty.toFixed(2)}</td>
+          <td className="p-2">{day.totalPurchaseAmount.toFixed(2)}</td>
+        </tr>
+      ))}
+      {dailyPurchaseSummary.length === 0 && (
+        <tr>
+          <td className="p-3 text-gray-500" colSpan={3}>
+            No purchases to summarize.
+          </td>
+        </tr>
+      )}
+    </tbody>
+  </table>
+</div>
+
 
       {/* Total Weight per Item */}
       <div className="overflow-x-auto mt-10">
