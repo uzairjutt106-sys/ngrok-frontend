@@ -330,6 +330,19 @@ export default function HomePage() {
     return rows;
   }, [transactions, sales, avgPurchaseByItem]);
 
+  // ========== NEW: Quick Quote (search item, show net weight, compute amount) ==========
+  const [quoteItem, setQuoteItem] = useState('');
+  const [quoteRate, setQuoteRate] = useState(''); // integers only
+  const selectedStock = useMemo(() => {
+    if (!quoteItem.trim()) return null;
+    const key = quoteItem.trim().toLowerCase();
+    return stocksSummary.find((r) => r.itemName === key) || null;
+  }, [quoteItem, stocksSummary]);
+
+  const parsedRate = Number(quoteRate);
+  const validRate = Number.isFinite(parsedRate) && parsedRate > 0 ? Math.trunc(parsedRate) : 0;
+  const quoteAmount = selectedStock ? selectedStock.net * validRate : 0;
+
   // -------------------- UI --------------------
   if (loading) return <p className="text-center mt-10">Loading...</p>;
   if (error) return <p className="text-center mt-10 text-red-500">Error: {error}</p>;
@@ -657,6 +670,65 @@ export default function HomePage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* 🔎 NEW: Quick Quote (search item, show net weight, compute amount) */}
+      <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mt-8 mb-8 shadow-sm">
+        <h2 className="text-xl font-semibold mb-3">🔎 Search Item</h2>
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 items-end">
+          <div className="md:col-span-2 col-span-2">
+            <label className="block text-sm text-gray-600 mb-1">Item name</label>
+            <input
+              type="text"
+              placeholder="Search item"
+              value={quoteItem}
+              onChange={(e) => setQuoteItem(e.target.value)}
+              className="border p-2 rounded w-full"
+              list="stocks-list"
+            />
+            <datalist id="stocks-list">
+              {stocksSummary.map((r) => (
+                <option key={r.itemName} value={r.itemName} />
+              ))}
+            </datalist>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Net weight (kg)</label>
+            <input
+              readOnly
+              value={selectedStock ? selectedStock.net.toFixed(2) : '0.00'}
+              className="border p-2 rounded w-full bg-gray-100"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Sale rate (int)</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              step={1}
+              min={1}
+              placeholder="Sale rate"
+              value={quoteRate}
+              onChange={(e) => setQuoteRate(e.target.value.replace(/\D+/g, ''))}
+              onWheel={(e) => (e.target as HTMLInputElement).blur()}
+              className="border p-2 rounded w-full"
+            />
+          </div>
+
+          <div className="md:col-span-2 col-span-2">
+            <label className="block text-sm text-gray-600 mb-1">Amount (net × rate)</label>
+            <input
+              readOnly
+              value={quoteAmount.toFixed(2)}
+              className="border p-2 rounded w-full bg-gray-100"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">
+          Net = Purchased − Sold. Amount uses current net weight and the sale rate you enter here.
+        </p>
       </div>
 
       {/* -------------------- Sales & Profit (Persisted) -------------------- */}
