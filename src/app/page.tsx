@@ -746,7 +746,9 @@ export default function HomePage() {
         setSaleQtyInput={setSaleQtyInput}
         saleDate={saleDate}
         setSaleDate={setSaleDate}
-      />
+      />{/* Profit reports (saved in profit_reports) */}
+<ProfitPanel />
+
     </main>
   );
 }
@@ -923,6 +925,210 @@ function SalesPanel({
             {totalProfit.toFixed(2)}
           </span>
         </div>
+      </div>
+    </div>
+  );
+}
+/* -------- Profits: generate + view stored rows from /profit_reports -------- */
+function ProfitPanel() {
+  // defaults: last 30 days, daily
+  const today = new Date();
+  const minusDays = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const [granularity, setGranularity] = useState<'daily'|'weekly'|'monthly'|'custom'>('daily');
+  const [startDate, setStartDate] = useState(minusDays(30));
+  const [endDate, setEndDate] = useState(today.toISOString().slice(0, 10));
+
+  const [rows, setRows] = useState<
+    { id:number; granularity:string; bucket_key:string; start_date:string; end_date:string; total_profit:number; created_at:string }[]
+  >([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string|null>(null);
+
+  const fetchProfits = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const url = new URL(`${API}/profits`);
+      url.searchParams.set('granularity', granularity);
+      url.searchParams.set('start_date', startDate);
+      url.searchParams.set('end_date', endDate);
+
+      const resp = await fetch(url.toString(), { headers: { 'X-API-Key': API_KEY }, cache: 'no-store' });
+      if (!resp.ok) {
+        const t = await resp.text();
+        throw new Error(`${resp.status} ${resp.statusText}: ${t}`);
+      }
+      const data = await resp.json();
+      setRows(data.profits || []);
+    } catch (e:any) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateProfits = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const resp = await fetch(`${API}/profits/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY,
+        },
+        body: JSON.stringify({
+          start_date: startDate,
+          end_date: endDate,
+          granularity,
+        }),
+      });
+      if (!resp.ok) {
+        const t = await resp.text();
+        throw new Error(`${resp.status} ${resp.statusText}: ${t}`);
+      }
+      // refresh the table after insert
+      await fetchProfits();
+    } catch (e:any) {
+      setErr(e.message);
+      setLoading(false);
+    }
+  };
+// When user changes granularity or dates, regenerate + fetch automatically
+useEffect(() => {
+  (async () => {
+    await generateProfits();
+    await fetchProfits();
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [granularity, startDate, endDate]);
+
+// Also run once on first mount so initial data appears
+useEffect(() => {
+  (async () => {
+    await generateProfits();
+    await fetchProfits();
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+  const grandTotal = rows.reduce((s, r) => s + (Number(r.total_profit) || 0), 0);
+
+  return (
+    <div className="overflow-x-auto mt-10">
+      <h2 className="text-2xl font-semibold mb-3">📈 Profit Reports</h2>
+
+      {/* Controls */}
+      <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-4 shadow-sm">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 items-end">
+          {/* Granularity */}
+          <div className="md:col-span-2 col-span-2">
+            <label className="block text-sm text-gray-600 mb-1">Granularity</label>
+            <div className="flex gap-2">
+              {(['daily','weekly','monthly','custom'] as const).map(g => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setGranularity(g)}
+                  className={`px-3 py-2 rounded border ${
+                    granularity === g ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-800'
+                  }`}
+                >
+                  {g[0].toUpperCase()+g.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Start */}
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Start date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="border p-2 rounded w-full"
+            />
+          </div>
+
+          {/* End */}
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">End date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="border p-2 rounded w-full"
+            />
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={generateProfits}
+              className="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700"
+              disabled={loading}
+            >
+              {loading ? 'Working…' : 'Generate + Save'}
+            </button>
+
+            <button
+              type="button"
+              onClick={fetchProfits}
+              className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+              disabled={loading}
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {err && <p className="text-red-600 mt-3">{err}</p>}
+      </div>
+
+      {/* Table */}
+      <table className="w-full border border-gray-300 rounded-lg">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="p-2 text-left">Period</th>
+            <th className="p-2 text-left">Start</th>
+            <th className="p-2 text-left">End</th>
+            <th className="p-2 text-left">Total Profit</th>
+            <th className="p-2 text-left">Saved</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? (
+            rows.map((r) => (
+              <tr key={r.id} className="border-t">
+                <td className="p-2">{r.bucket_key}</td>
+                <td className="p-2">{r.start_date}</td>
+                <td className="p-2">{r.end_date}</td>
+                <td className={`p-2 font-semibold ${Number(r.total_profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {Number(r.total_profit).toFixed(2)}
+                </td>
+                <td className="p-2 text-sm text-gray-600">{r.created_at}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="p-3 text-gray-500" colSpan={5}>
+                No rows yet. Choose a range and click <strong>Generate + Save</strong>.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Grand total */}
+      <div className="text-right mt-3 font-bold text-lg">
+        Total (shown rows): <span className="text-emerald-600">{grandTotal.toFixed(2)}</span>
       </div>
     </div>
   );
