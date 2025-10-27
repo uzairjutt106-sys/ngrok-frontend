@@ -1067,7 +1067,9 @@ function SalesPanel({
 
 /* -------- Profits: generate + view stored rows from /profit_reports -------- */
 function ProfitPanel() {
-  // defaults: last 30 days, daily
+  const API = 'http://127.0.0.1:8000';
+  const API_KEY = '@uzair143';
+
   const today = new Date();
   const minusDays = (n: number) => {
     const d = new Date();
@@ -1075,7 +1077,8 @@ function ProfitPanel() {
     return d.toISOString().slice(0, 10);
   };
 
-  const [granularity, setGranularity] = useState<'daily'|'weekly'|'monthly'|'custom'>('daily');
+  const [granularity, setGranularity] =
+    useState<'daily'|'weekly'|'monthly'|'custom'>('daily');
   const [startDate, setStartDate] = useState(minusDays(30));
   const [endDate, setEndDate] = useState(today.toISOString().slice(0, 10));
 
@@ -1086,21 +1089,70 @@ function ProfitPanel() {
   const [err, setErr] = useState<string|null>(null);
 
   const fetchProfits = async () => {
+    setErr(null);
+    const url = new URL(`${API}/profits`);
+    url.searchParams.set('granularity', granularity);
+    url.searchParams.set('start_date', startDate);
+    url.searchParams.set('end_date', endDate);
+
+    const resp = await fetch(url.toString(), {
+      headers: { 'X-API-Key': API_KEY },
+      cache: 'no-store',
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(`${resp.status} ${resp.statusText}: ${t}`);
+    }
+    const data = await resp.json();
+    setRows(data.profits || []);
+  };
+
+  const generateProfits = async () => {
+    const resp = await fetch(`${API}/profits/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': API_KEY,
+      },
+      body: JSON.stringify({ start_date: startDate, end_date: endDate, granularity }),
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(`${resp.status} ${resp.statusText}: ${t}`);
+    }
+  };
+
+  // 🔁 Single refresh function used by effects & buttons
+  const refreshCurrent = async (auto = false) => {
     setLoading(true);
     setErr(null);
     try {
-      const url = new URL(`${API}/profits`);
-      url.searchParams.set('granularity', granularity);
-      url.searchParams.set('start_date', startDate);
-      url.searchParams.set('end_date', endDate);
-
-      const resp = await fetch(url.toString(), { headers: { 'X-API-Key': API_KEY }, cache: 'no-store' });
-      if (!resp.ok) {
-        const t = await resp.text();
-        throw new Error(`${resp.status} ${resp.statusText}: ${t}`);
+      // For CUSTOM ranges we always generate to ensure a row exists for this exact range,
+      // then fetch the freshly stored rows.
+      if (granularity === 'custom') {
+        await generateProfits();
       }
-      const data = await resp.json();
-      setRows(data.profits || []);
+      await fetchProfits();
+    } catch (e: any) {
+      setErr(e.message);
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto-refresh whenever filters change (fixes custom not updating)
+  useEffect(() => {
+    refreshCurrent(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [granularity, startDate, endDate]);
+
+  const onClickGenerate = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      await generateProfits();
+      await fetchProfits();
     } catch (e:any) {
       setErr(e.message);
     } finally {
@@ -1108,52 +1160,14 @@ function ProfitPanel() {
     }
   };
 
-  const generateProfits = async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const resp = await fetch(`${API}/profits/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': API_KEY,
-        },
-        body: JSON.stringify({
-          start_date: startDate,
-          end_date: endDate,
-          granularity,
-        }),
-      });
-      if (!resp.ok) {
-        const t = await resp.text();
-        throw new Error(`${resp.status} ${resp.statusText}: ${t}`);
-      }
-      // refresh the table after insert
-      await fetchProfits();
-    } catch (e:any) {
-      setErr(e.message);
-      setLoading(false);
-    }
+  const onClickRefresh = async () => {
+    await refreshCurrent();
   };
-// When user changes granularity or dates, regenerate + fetch automatically
-useEffect(() => {
-  (async () => {
-    await generateProfits();
-    await fetchProfits();
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [granularity, startDate, endDate]);
 
-// Also run once on first mount so initial data appears
-useEffect(() => {
-  (async () => {
-    await generateProfits();
-    await fetchProfits();
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
-  const grandTotal = rows.reduce((s, r) => s + (Number(r.total_profit) || 0), 0);
+  const grandTotal = useMemo(
+    () => rows.reduce((s, r) => s + (Number(r.total_profit) || 0), 0),
+    [rows]
+  );
 
   return (
     <div className="overflow-x-auto mt-10">
@@ -1207,7 +1221,7 @@ useEffect(() => {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={generateProfits}
+              onClick={onClickGenerate}
               className="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700"
               disabled={loading}
             >
@@ -1216,7 +1230,7 @@ useEffect(() => {
 
             <button
               type="button"
-              onClick={fetchProfits}
+              onClick={onClickRefresh}
               className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
               disabled={loading}
             >
@@ -1255,7 +1269,7 @@ useEffect(() => {
           ) : (
             <tr>
               <td className="p-3 text-gray-500" colSpan={5}>
-                No rows yet. Choose a range and click <strong>Generate + Save</strong>.
+                No rows yet for this filter.
               </td>
             </tr>
           )}
