@@ -897,96 +897,72 @@ function SalesPanel({
   const getAvgPurchase = (item: string) =>
     avgPurchaseByItem.get(item.trim().toLowerCase()) ?? 0;
 
-  // 🔍 NEW: filters
-  const [saleFilterItem, setSaleFilterItem] = useState("");
-  const [saleFromDate, setSaleFromDate] = useState("");
-  const [saleToDate, setSaleToDate] = useState("");
+  // 🔹 Inline-edit state for sales
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
+  const [editSaleItem, setEditSaleItem] = useState('');
+  const [editSaleRate, setEditSaleRate] = useState('');
+  const [editSaleQty, setEditSaleQty] = useState('');
+  const [editSaleDate, setEditSaleDate] = useState(today());
 
-  // Apply filters (client-side) to sales
-  const filteredSales = useMemo(() => {
-    return sales.filter((s) => {
-      const matchesItem =
-        saleFilterItem.trim() === "" ||
-        s.item_name.toLowerCase().includes(saleFilterItem.trim().toLowerCase());
+  const startEditSale = (s: SaleEntry) => {
+    setEditingSaleId(s.id);
+    setEditSaleItem(s.item_name);
+    setEditSaleRate(String(Math.trunc(s.sale_rate)));
+    setEditSaleQty(String(s.quantity_kg));
+    setEditSaleDate(s.sale_date);
+  };
 
-      const d = new Date(s.sale_date); // sale_date is "YYYY-MM-DD"
-      const fromOk = !saleFromDate || d >= new Date(saleFromDate);
-      const toOk = !saleToDate || d <= new Date(saleToDate);
+  const cancelEditSale = () => {
+    setEditingSaleId(null);
+    setEditSaleItem('');
+    setEditSaleRate('');
+    setEditSaleQty('');
+    setEditSaleDate(today());
+  };
 
-      return matchesItem && fromOk && toOk;
-    });
-  }, [sales, saleFilterItem, saleFromDate, saleToDate]);
+  const saveEditSale = async (id: number) => {
+    const sr = Number(editSaleRate);
+    const q = Number(editSaleQty);
+    if (!editSaleItem.trim()) return alert('Item name required');
+    if (!Number.isFinite(sr) || sr <= 0) return alert('Sale rate must be > 0');
+    if (!Number.isFinite(q) || q <= 0) return alert('Quantity must be > 0');
+    if (!editSaleDate) return alert('Date required');
 
-  // Recompute total profit for visible (filtered) rows
-  const totalProfit = useMemo(() => {
-    return filteredSales.reduce((sum, s) => {
-      const avgPurchase = getAvgPurchase(s.item_name);
-      return sum + (s.sale_rate - avgPurchase) * s.quantity_kg;
-    }, 0);
-  }, [filteredSales, avgPurchaseByItem]);
+    try {
+      const resp = await fetch(`${API}/sales/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY,
+        },
+        body: JSON.stringify({
+          item_name: editSaleItem.trim(),
+          sale_rate: Math.trunc(sr),
+          quantity_kg: q,
+          sale_date: editSaleDate,
+        }),
+      });
+      if (!resp.ok) {
+        const t = await resp.text();
+        throw new Error(`${resp.status} ${resp.statusText}: ${t}`);
+      }
+      await onReload(); // refresh sales
+      cancelEditSale();
+    } catch (e: any) {
+      alert('Update sale failed: ' + e.message);
+    }
+  };
+
+  const totalProfit = sales.reduce((sum, s) => {
+    const avgPurchase = getAvgPurchase(s.item_name);
+    return sum + (s.sale_rate - avgPurchase) * s.quantity_kg;
+  }, 0);
 
   return (
     <div className="mt-10">
       <h2 className="text-2xl font-semibold mb-3">💰 Sales & Profit (Computed)</h2>
 
-      {/* 🔍 NEW: Sales Filters */}
-      <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6 shadow-sm">
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 items-end">
-          <div className="md:col-span-2 col-span-2">
-            <label className="block text-sm text-gray-600 mb-1">Filter by item</label>
-            <input
-              type="text"
-              placeholder="e.g. copper"
-              value={saleFilterItem}
-              onChange={(e) => setSaleFilterItem(e.target.value)}
-              className="border p-2 rounded w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">From</label>
-            <input
-              type="date"
-              value={saleFromDate}
-              onChange={(e) => setSaleFromDate(e.target.value)}
-              className="border p-2 rounded w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">To</label>
-            <input
-              type="date"
-              value={saleToDate}
-              onChange={(e) => setSaleToDate(e.target.value)}
-              className="border p-2 rounded w-full"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setSaleFilterItem("");
-                setSaleFromDate("");
-                setSaleToDate("");
-              }}
-              className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={onReload}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            >
-              Reload Sales
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Add a Sale Entry (unchanged) */}
+      {/* Add a Sale Entry */}
       <form
         onSubmit={handleAddSale}
         className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6 shadow-sm"
@@ -1001,7 +977,6 @@ function SalesPanel({
             required
           />
 
-          {/* Integers only for sale rate */}
           <input
             type="number"
             inputMode="numeric"
@@ -1009,10 +984,7 @@ function SalesPanel({
             min={1}
             placeholder="Sale rate"
             value={saleRateInput}
-            onChange={(e) => {
-              const v = e.target.value.replace(/\D+/g, "");
-              setSaleRateInput(v);
-            }}
+            onChange={(e) => setSaleRateInput(e.target.value.replace(/\D+/g, ''))}
             onWheel={(e) => (e.target as HTMLInputElement).blur()}
             className="border p-2 rounded w-full"
             required
@@ -1046,16 +1018,15 @@ function SalesPanel({
           </button>
 
           <div className="md:col-span-6 col-span-2 text-sm text-gray-600">
-            Avg purchase for <span className="font-medium">{saleItem || "—"}</span>:{" "}
+            Avg purchase for <span className="font-medium">{saleItem || '—'}</span>:{' '}
             <span className="font-semibold">
-              {saleItem ? getAvgPurchase(saleItem).toFixed(2) : "0.00"}
+              {saleItem ? (avgPurchaseByItem.get(saleItem.trim().toLowerCase()) ?? 0).toFixed(2) : '0.00'}
             </span>
-            {saleItem && getAvgPurchase(saleItem) === 0 && " (no purchase history found)"}
           </div>
         </div>
       </form>
 
-      {/* Sales & Profit Table (now uses filteredSales) */}
+      {/* Sales & Profit Table with inline edit */}
       <div className="overflow-x-auto">
         <table className="w-full border border-gray-300 rounded-lg">
           <thead className="bg-gray-100">
@@ -1070,31 +1041,116 @@ function SalesPanel({
             </tr>
           </thead>
           <tbody>
-            {filteredSales.length ? (
-              filteredSales.map((s) => {
+            {sales.length ? (
+              sales.map((s) => {
                 const avgPurchase = getAvgPurchase(s.item_name);
+                const isEditing = editingSaleId === s.id;
                 const profit = (s.sale_rate - avgPurchase) * s.quantity_kg;
+
                 return (
                   <tr key={s.id} className="border-t">
-                    <td className="p-2">{s.item_name}</td>
+                    <td className="p-2">
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          className="border p-1 rounded w-full"
+                          value={editSaleItem}
+                          onChange={(e) => setEditSaleItem(e.target.value)}
+                        />
+                      ) : (
+                        s.item_name
+                      )}
+                    </td>
+
                     <td className="p-2">{avgPurchase.toFixed(2)}</td>
-                    <td className="p-2">{s.sale_rate}</td>
-                    <td className="p-2">{s.quantity_kg.toFixed(2)}</td>
+
+                    <td className="p-2">
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          step={1}
+                          min={1}
+                          className="border p-1 rounded w-full"
+                          value={editSaleRate}
+                          onChange={(e) =>
+                            setEditSaleRate(e.target.value.replace(/\D+/g, ''))
+                          }
+                        />
+                      ) : (
+                        s.sale_rate
+                      )}
+                    </td>
+
+                    <td className="p-2">
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          min="0.01"
+                          className="border p-1 rounded w-full"
+                          value={editSaleQty}
+                          onChange={(e) => setEditSaleQty(e.target.value)}
+                        />
+                      ) : (
+                        s.quantity_kg.toFixed(2)
+                      )}
+                    </td>
+
                     <td
                       className={`p-2 font-semibold ${
-                        profit >= 0 ? "text-green-600" : "text-red-600"
+                        profit >= 0 ? 'text-green-600' : 'text-red-600'
                       }`}
                     >
                       {profit.toFixed(2)}
                     </td>
-                    <td className="p-2">{s.sale_date}</td>
+
                     <td className="p-2">
-                      <button
-                        onClick={() => handleDeleteSale(s.id)}
-                        className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
-                      >
-                        Delete
-                      </button>
+                      {isEditing ? (
+                        <input
+                          type="date"
+                          className="border p-1 rounded w-full"
+                          value={editSaleDate}
+                          onChange={(e) => setEditSaleDate(e.target.value)}
+                        />
+                      ) : (
+                        s.sale_date
+                      )}
+                    </td>
+
+                    <td className="p-2 space-x-2">
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={() => saveEditSale(s.id)}
+                            className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={cancelEditSale}
+                            className="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => startEditSale(s)}
+                            className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSale(s.id)}
+                            className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1102,23 +1158,22 @@ function SalesPanel({
             ) : (
               <tr>
                 <td className="p-3 text-gray-500" colSpan={7}>
-                  No sales match the filter.
+                  No sales added yet.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
 
-        {/* Sales total profit for FILTERED rows */}
+        {/* Sales total profit */}
         <div className="text-right mt-3 font-bold text-lg">
-          Sales Total Profit (filtered):{" "}
+          Sales Total Profit:{' '}
           <span className="text-emerald-600">{totalProfit.toFixed(2)}</span>
         </div>
       </div>
     </div>
   );
 }
-
 
 /* -------- Profits: generate + view stored rows from /profit_reports -------- */
 function ProfitPanel() {
