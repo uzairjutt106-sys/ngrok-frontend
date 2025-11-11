@@ -219,7 +219,10 @@ useEffect(() => { fetchDaily(dailyDate); }, [dailyDate]);
   // ===== Daily PURCHASE summary (no purchase rate column) =====
   const dailyPurchaseSummary = useMemo(() => {
     const map: Record<string, { date: string; totalPurchaseAmount: number; totalQty: number }> = {};
-    for (const t of filteredTransactions) {
+    for (const t of filteredTransactions)
+    
+
+       {
       const day = t.transaction_date.split('T')[0];
       if (!map[day]) {
         map[day] = { date: day, totalPurchaseAmount: 0, totalQty: 0 };
@@ -229,6 +232,12 @@ useEffect(() => { fetchDaily(dailyDate); }, [dailyDate]);
     }
     return Object.values(map).sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [filteredTransactions]);
+  // Only show results if any filter is applied
+const hasPurchaseFilters =
+  filterItem.trim() !== '' || fromDate !== '' || toDate !== '';
+
+const searchResults = hasPurchaseFilters ? filteredTransactions : [];
+
   // 👇 Daily Purchases (filter by selected day)
 const purchasesForDay = useMemo(() => {
   const d = dayViewDate;
@@ -478,56 +487,118 @@ const totalsForDay = useMemo(() => {
           </button>
         </div>
       </form>
+{/* Filter Purchases — search by item + quick ranges */}
+<div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6 shadow-sm">
+  <h2 className="text-xl font-semibold mb-3">Filter Purchases</h2>
 
-      {/* Filter Purchases */}
-      <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6 shadow-sm">
-        <h2 className="text-xl font-semibold mb-3">Filter Purchases</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <input
-            type="text"
-            placeholder="Filter by item"
-            value={filterItem}
-            onChange={(e) => setFilterItem(e.target.value)}
-            className="border p-2 rounded w-full"
-          />
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="border p-2 rounded w-full"
-          />
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="border p-2 rounded w-full"
-          />
-          <button
-            onClick={async () => {
-              await Promise.all([fetchTransactions(), fetchSales()]);
-            }}
-            className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
-          >
-            Reset
-          </button>
-        </div>
-      </div>
+  <div className="grid grid-cols-2 md:grid-cols-6 gap-4 items-end">
+    {/* Search by item name */}
+    <div className="md:col-span-2 col-span-2">
+      <label className="block text-sm text-gray-600 mb-1">Search item</label>
+      <input
+        type="text"
+        placeholder="Type item name"
+        value={filterItem}
+        onChange={(e) => setFilterItem(e.target.value)}
+        className="border p-2 rounded w-full"
+        list="items-list-all"
+      />
+      <datalist id="items-list-all">
+        {[...new Set(transactions.map((t) => t.item_name))].map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+    </div>
 
-      {/* Purchases Table (with inline edit) */}
-      <div className="overflow-x-auto mb-6">
-        <table className="w-full border border-gray-300 rounded-lg">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-2 text-left">Item</th>
-              <th className="p-2 text-left">Purchase Rate</th>
-              <th className="p-2 text-left">Quantity (kg)</th>
-              <th className="p-2 text-left">Purchase Amount</th>
-              <th className="p-2 text-left">Date</th>
-              <th className="p-2 text-left">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredTransactions.map((t) => {
+    {/* Optional manual range */}
+    <div>
+      <label className="block text-sm text-gray-600 mb-1">From</label>
+      <input
+        type="date"
+        value={fromDate}
+        onChange={(e) => setFromDate(e.target.value)}
+        className="border p-2 rounded w-full"
+      />
+    </div>
+
+    <div>
+      <label className="block text-sm text-gray-600 mb-1">To</label>
+      <input
+        type="date"
+        value={toDate}
+        onChange={(e) => setToDate(e.target.value)}
+        className="border p-2 rounded w-full"
+      />
+    </div>
+
+    {/* Quick range buttons */}
+    <div className="flex gap-2 md:col-span-2 col-span-2">
+      <button
+        type="button"
+        onClick={() => {
+          const end = new Date();
+          const start = new Date();
+          start.setDate(end.getDate() - 7);
+          setFromDate(start.toISOString().slice(0, 10));
+          setToDate(end.toISOString().slice(0, 10));
+        }}
+        className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+      >
+        Last Week
+      </button>
+
+      <button
+        type="button"
+        onClick={() => {
+          const end = new Date();
+          const start = new Date();
+          start.setMonth(end.getMonth() - 1);
+          setFromDate(start.toISOString().slice(0, 10));
+          setToDate(end.toISOString().slice(0, 10));
+        }}
+        className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+      >
+        Last Month
+      </button>
+
+      <button
+        type="button"
+        onClick={() => {
+          setFromDate('');
+          setToDate('');
+          setFilterItem('');
+        }}
+        className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+      >
+        Clear
+      </button>
+    </div>
+  </div>
+</div>
+{/* Purchases — Search Results (empty by default, shows after any filter input) */}
+<div className="overflow-x-auto mb-6">
+  <h2 className="text-2xl font-semibold mb-3">📦 Purchases — Search Results</h2>
+
+  {!hasPurchaseFilters ? (
+    <div className="p-6 border border-dashed rounded-lg text-center text-gray-500">
+      Start by entering a search term or picking a date to see results.
+    </div>
+  ) : (
+    <>
+      <table className="w-full border border-gray-300 rounded-lg">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="p-2 text-left">Item</th>
+            <th className="p-2 text-left">Purchase Rate</th>
+            <th className="p-2 text-left">Quantity (kg)</th>
+            <th className="p-2 text-left">Purchase Amount</th>
+            <th className="p-2 text-left">Date</th>
+            <th className="p-2 text-left">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {searchResults.length ? (
+            searchResults.map((t) => {
               const isEditing = editingId === t.id;
               const amount = Math.trunc(t.purchase_rate) * t.quantity_kg;
 
@@ -581,19 +652,7 @@ const totalsForDay = useMemo(() => {
                   </td>
 
                   <td className="p-2">{amount.toFixed(2)}</td>
-
-                  <td className="p-2">
-                    {isEditing ? (
-                      <input
-                        type="date"
-                        className="border p-1 rounded w-full"
-                        value={editDate}
-                        onChange={(e) => setEditDate(e.target.value)}
-                      />
-                    ) : (
-                      t.transaction_date.split('T')[0]
-                    )}
-                  </td>
+                  <td className="p-2">{t.transaction_date.split('T')[0]}</td>
 
                   <td className="p-2 space-x-2">
                     {isEditing ? (
@@ -630,16 +689,205 @@ const totalsForDay = useMemo(() => {
                   </td>
                 </tr>
               );
-            })}
-            {filteredTransactions.length === 0 && (
-              <tr>
-                <td className="p-3 text-gray-500" colSpan={6}>
-                  No purchases match the filter.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            })
+          ) : (
+            <tr>
+              <td className="p-3 text-gray-500" colSpan={6}>
+                No results match the current filters.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Totals for current search results only */}
+      <div className="text-right mt-3 font-bold text-lg">
+        Total Purchase:{' '}
+        <span className="text-blue-600">
+          {searchResults
+            .reduce((sum, t) => sum + Math.trunc(t.purchase_rate) * t.quantity_kg, 0)
+            .toFixed(2)}
+        </span>
+      </div>
+    </>
+  )}
+</div>
+
+
+
+      {/* Purchases Table (with inline edit) */}
+{/* Purchases Table — Day-based view with Prev / Today / Next */}
+<div className="overflow-x-auto mb-6">
+  <div className="flex flex-wrap items-end gap-3 mb-3">
+    <h2 className="text-2xl font-semibold">📦 Purchases (by day)</h2>
+    <div className="ml-auto flex items-center gap-2">
+      <input
+        type="date"
+        value={dayViewDate}
+        onChange={(e) => setDayViewDate(e.target.value)}
+        className="border p-2 rounded"
+      />
+      <button
+        type="button"
+        onClick={() => {
+          const d = new Date(dayViewDate);
+          d.setDate(d.getDate() - 1);
+          setDayViewDate(d.toISOString().slice(0, 10));
+        }}
+        className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+      >
+        ◀ Prev
+      </button>
+      <button
+        type="button"
+        onClick={() => setDayViewDate(new Date().toISOString().slice(0, 10))}
+        className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+      >
+        Today
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const d = new Date(dayViewDate);
+          d.setDate(d.getDate() + 1);
+          setDayViewDate(d.toISOString().slice(0, 10));
+        }}
+        className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+      >
+        Next ▶
+      </button>
+    </div>
+  </div>
+
+  <table className="w-full border border-gray-300 rounded-lg">
+    <thead className="bg-gray-100">
+      <tr>
+        <th className="p-2 text-left">Item</th>
+        <th className="p-2 text-left">Purchase Rate</th>
+        <th className="p-2 text-left">Quantity (kg)</th>
+        <th className="p-2 text-left">Purchase Amount</th>
+        <th className="p-2 text-left">Date</th>
+        <th className="p-2 text-left">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {purchasesForDay.length ? (
+        purchasesForDay.map((t) => {
+          const isEditing = editingId === t.id;
+          const amount = Math.trunc(t.purchase_rate) * t.quantity_kg;
+
+          return (
+            <tr key={t.id} className="border-t">
+              <td className="p-2">
+                {isEditing ? (
+                  <input
+                    type="text"
+                    className="border p-1 rounded w-full"
+                    value={editItemName}
+                    onChange={(e) => setEditItemName(e.target.value)}
+                  />
+                ) : (
+                  t.item_name
+                )}
+              </td>
+
+              <td className="p-2">
+                {isEditing ? (
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    step={1}
+                    min={1}
+                    className="border p-1 rounded w-full"
+                    value={editPurchaseRate}
+                    onChange={(e) =>
+                      setEditPurchaseRate(e.target.value.replace(/\D+/g, ''))
+                    }
+                  />
+                ) : (
+                  Math.trunc(t.purchase_rate)
+                )}
+              </td>
+
+              <td className="p-2">
+                {isEditing ? (
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0.01"
+                    className="border p-1 rounded w-full"
+                    value={editQuantity}
+                    onChange={(e) => setEditQuantity(e.target.value)}
+                  />
+                ) : (
+                  t.quantity_kg.toFixed(2)
+                )}
+              </td>
+
+              <td className="p-2">{amount.toFixed(2)}</td>
+              <td className="p-2">{t.transaction_date.split('T')[0]}</td>
+
+              <td className="p-2 space-x-2">
+                {isEditing ? (
+                  <>
+                    <button
+                      onClick={() => saveEdit(t.id)}
+                      className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => startEdit(t)}
+                      className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(t.id)}
+                      className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </td>
+            </tr>
+          );
+        })
+      ) : (
+        <tr>
+          <td className="p-3 text-gray-500" colSpan={6}>
+            No purchases on {dayViewDate}.
+          </td>
+        </tr>
+      )}
+    </tbody>
+
+    {/* Optional totals footer for the selected day */}
+    <tfoot>
+      <tr className="bg-gray-50 font-semibold">
+        <td className="p-2">Totals</td>
+        <td className="p-2">—</td>
+        <td className="p-2">{totalsForDay.totalQty.toFixed(2)}</td>
+        <td className="p-2">{totalsForDay.totalAmt.toFixed(2)}</td>
+        <td className="p-2">{dayViewDate}</td>
+        <td className="p-2">—</td>
+      </tr>
+    </tfoot>
+  </table>
+
+
+
 
         {/* Total Purchase Amount */}
         <div className="text-right mt-3 font-bold text-lg">
@@ -865,6 +1113,7 @@ const totalsForDay = useMemo(() => {
 
 /* -------- Sales panel (kept same styling) -------- */
 /* -------- Sales panel with filters -------- */
+/* -------- Sales panel with daily view & navigation -------- */
 function SalesPanel({
   sales,
   onReload,
@@ -904,12 +1153,34 @@ function SalesPanel({
   const [editSaleQty, setEditSaleQty] = useState('');
   const [editSaleDate, setEditSaleDate] = useState(today());
 
+  // 🔹 NEW: Daily Sales date selector (defaults to today)
+  const [saleDayViewDate, setSaleDayViewDate] = useState(today());
+  
+
+  // Filter sales for the selected day
+  const salesForDay = useMemo(() => {
+    const d = saleDayViewDate;
+    return sales.filter((s) => (s.sale_date || '').slice(0, 10) === d);
+  }, [sales, saleDayViewDate]);
+
+  // Totals for the selected day
+  const totalsForSalesDay = useMemo(() => {
+    let qty = 0;
+    let profit = 0;
+    for (const s of salesForDay) {
+      const avg = getAvgPurchase(s.item_name);
+      qty += s.quantity_kg;
+      profit += (s.sale_rate - avg) * s.quantity_kg;
+    }
+    return { qty, profit };
+  }, [salesForDay, avgPurchaseByItem]);
+
   const startEditSale = (s: SaleEntry) => {
     setEditingSaleId(s.id);
     setEditSaleItem(s.item_name);
     setEditSaleRate(String(Math.trunc(s.sale_rate)));
     setEditSaleQty(String(s.quantity_kg));
-    setEditSaleDate(s.sale_date);
+    setEditSaleDate((s.sale_date || '').slice(0, 10) || today());
   };
 
   const cancelEditSale = () => {
@@ -953,7 +1224,7 @@ function SalesPanel({
     }
   };
 
-  const totalProfit = sales.reduce((sum, s) => {
+  const totalProfitAll = sales.reduce((sum, s) => {
     const avgPurchase = getAvgPurchase(s.item_name);
     return sum + (s.sale_rate - avgPurchase) * s.quantity_kg;
   }, 0);
@@ -1026,13 +1297,54 @@ function SalesPanel({
         </div>
       </form>
 
-      {/* Sales & Profit Table with inline edit */}
-      <div className="overflow-x-auto">
+      {/* 📅 NEW: Daily Sales (per-day detail view with navigation) */}
+      <div className="overflow-x-auto mb-6">
+        <div className="flex flex-wrap items-end gap-3 mb-3">
+          <h3 className="text-xl font-semibold">📅 Daily Sales</h3>
+          <div className="ml-auto flex items-center gap-2">
+            <input
+              type="date"
+              value={saleDayViewDate}
+              onChange={(e) => setSaleDayViewDate(e.target.value)}
+              className="border p-2 rounded"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const d = new Date(saleDayViewDate);
+                d.setDate(d.getDate() - 1);
+                setSaleDayViewDate(d.toISOString().slice(0, 10));
+              }}
+              className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+            >
+              ◀ Prev
+            </button>
+            <button
+              type="button"
+              onClick={() => setSaleDayViewDate(today())}
+              className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const d = new Date(saleDayViewDate);
+                d.setDate(d.getDate() + 1);
+                setSaleDayViewDate(d.toISOString().slice(0, 10));
+              }}
+              className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+            >
+              Next ▶
+            </button>
+          </div>
+        </div>
+
         <table className="w-full border border-gray-300 rounded-lg">
           <thead className="bg-gray-100">
             <tr>
               <th className="p-2 text-left">Item</th>
-              <th className="p-2 text-left">Avg Purchase Rate</th>
+              <th className="p-2 text-left">Avg Purchase</th>
               <th className="p-2 text-left">Sale Rate</th>
               <th className="p-2 text-left">Quantity (kg)</th>
               <th className="p-2 text-left">Profit</th>
@@ -1041,8 +1353,8 @@ function SalesPanel({
             </tr>
           </thead>
           <tbody>
-            {sales.length ? (
-              sales.map((s) => {
+            {salesForDay.length ? (
+              salesForDay.map((s) => {
                 const avgPurchase = getAvgPurchase(s.item_name);
                 const isEditing = editingSaleId === s.id;
                 const profit = (s.sale_rate - avgPurchase) * s.quantity_kg;
@@ -1061,9 +1373,7 @@ function SalesPanel({
                         s.item_name
                       )}
                     </td>
-
                     <td className="p-2">{avgPurchase.toFixed(2)}</td>
-
                     <td className="p-2">
                       {isEditing ? (
                         <input
@@ -1081,7 +1391,6 @@ function SalesPanel({
                         s.sale_rate
                       )}
                     </td>
-
                     <td className="p-2">
                       {isEditing ? (
                         <input
@@ -1097,7 +1406,6 @@ function SalesPanel({
                         s.quantity_kg.toFixed(2)
                       )}
                     </td>
-
                     <td
                       className={`p-2 font-semibold ${
                         profit >= 0 ? 'text-green-600' : 'text-red-600'
@@ -1105,20 +1413,7 @@ function SalesPanel({
                     >
                       {profit.toFixed(2)}
                     </td>
-
-                    <td className="p-2">
-                      {isEditing ? (
-                        <input
-                          type="date"
-                          className="border p-1 rounded w-full"
-                          value={editSaleDate}
-                          onChange={(e) => setEditSaleDate(e.target.value)}
-                        />
-                      ) : (
-                        s.sale_date
-                      )}
-                    </td>
-
+                    <td className="p-2">{(s.sale_date || '').slice(0, 10)}</td>
                     <td className="p-2 space-x-2">
                       {isEditing ? (
                         <>
@@ -1158,22 +1453,41 @@ function SalesPanel({
             ) : (
               <tr>
                 <td className="p-3 text-gray-500" colSpan={7}>
-                  No sales added yet.
+                  No sales on {saleDayViewDate}.
                 </td>
               </tr>
             )}
           </tbody>
+
+          <tfoot>
+            <tr className="bg-gray-50 font-semibold">
+              <td className="p-2">Totals</td>
+              <td className="p-2">—</td>
+              <td className="p-2">—</td>
+              <td className="p-2">{totalsForSalesDay.qty.toFixed(2)}</td>
+              <td
+                className={`p-2 ${
+                  totalsForSalesDay.profit >= 0 ? 'text-green-700' : 'text-red-700'
+                }`}
+              >
+                {totalsForSalesDay.profit.toFixed(2)}
+              </td>
+              <td className="p-2">{saleDayViewDate}</td>
+              <td className="p-2">—</td>
+            </tr>
+          </tfoot>
         </table>
 
-        {/* Sales total profit */}
+        {/* Sales total profit (all rows, unchanged) */}
         <div className="text-right mt-3 font-bold text-lg">
-          Sales Total Profit:{' '}
-          <span className="text-emerald-600">{totalProfit.toFixed(2)}</span>
+          Sales Total Profit (all):{' '}
+          <span className="text-emerald-600">{totalProfitAll.toFixed(2)}</span>
         </div>
       </div>
     </div>
   );
 }
+
 
 /* -------- Profits: generate + view stored rows from /profit_reports -------- */
 function ProfitPanel() {
